@@ -31,7 +31,55 @@ namespace Stardrop.Utilities.External
             }
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX) is true)
             {
-                arguments = $"-c \"'{Pathing.GetSmapiPath().Replace("StardewModdingAPI.dll", "StardewModdingAPI")}' --mods-path '{Pathing.GetSelectedModsFolderPath()}'\"";
+                // Get paths to SMAPI and mods
+                string smapiPath = Pathing.GetSmapiPath().Replace("StardewModdingAPI.dll", "StardewModdingAPI");
+                string modsPath = Pathing.GetSelectedModsFolderPath();
+            
+                // Create a minimal shell script for launching SMAPI
+                string tempScriptPath = Path.Combine(Path.GetTempPath(), "launch-smapi.command");
+                string scriptContent = "#!/usr/bin/env sh\n\n" +
+                    "# Set mods path\n" +
+                    "export SMAPI_MODS_PATH='" + modsPath.Replace("'", "'\\''") + "'\n\n" +
+                    "# Define non-SMAPI colors for terminal output\n" +
+                    "GREEN=$(tput setaf 2)\n" +
+                    "BLUE=$(tput setaf 4)\n" +
+                    "RESET=$(tput sgr0)\n\n" +
+                    "# Change to SMAPI directory and run\n" +
+                    "cd '" + smapiInfo.DirectoryName.Replace("'", "'\\''") + "'\n" +
+                    "echo \"${BLUE}Launching SMAPI...${RESET}\"\n" +
+                    "'" + smapiPath.Replace("'", "'\\''") + "'\n\n" +
+                    "# Show exit message\n" +
+                    "echo \"${GREEN}SMAPI has exited. Closing window...${RESET}\"\n" +
+                    "sleep 1\n\n" +
+                    "# Terminal closing logic:\n" +
+                    "# Count the number of Terminal windows using AppleScript\n" +
+                    "WINDOW_COUNT=$(osascript -e 'tell application \"Terminal\" to count windows')\n\n" +
+                    "# If this is the only window, quit Terminal entirely\n" +
+                    "# Otherwise just close this window\n" +
+                    "if [ \"$WINDOW_COUNT\" -eq 1 ]; then\n" +
+                    "    osascript -e 'tell application \"Terminal\" to quit' &\n" +
+                    "else\n" +
+                    "    osascript -e 'tell application \"Terminal\" to close (first window whose frontmost is true) saving no' &\n" +
+                    "fi\n\n" +
+                    "exit 0\n";
+                
+                // Write out the script and make it executable
+                File.WriteAllText(tempScriptPath, scriptContent);
+                Process.Start("/bin/sh", $"-c \"chmod +x '{tempScriptPath}'\"").WaitForExit();
+                
+                // Launch Terminal with the script
+                var OSXProcessInfo = new ProcessStartInfo
+            {
+                FileName = "/usr/bin/open",
+                Arguments = $"-a Terminal {tempScriptPath}",
+                RedirectStandardOutput = false,
+                RedirectStandardError = false,
+                CreateNoWindow = hideConsole,
+                UseShellExecute = true
+            };
+            
+            Program.helper.Log($"Launching SMAPI in Terminal via: {tempScriptPath}");
+            return OSXProcessInfo;
             }
 
             Program.helper.Log($"Starting SMAPI with the following arguments: {arguments}");
